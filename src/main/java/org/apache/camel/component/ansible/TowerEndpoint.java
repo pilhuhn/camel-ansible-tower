@@ -99,14 +99,28 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
 
                 String host = remaining;
 
-                Map<String,Object> bodyMap = (Map<String, Object>) exchange.getIn().getBody();
-                Map<String,Object> metaMap = (Map<String, Object>) bodyMap.get("meta");
-                String extras = (String) metaMap.get("extras");
+                String template = (String) parameters.get("template");
 
-                JsonObject jo = new JsonObject(extras);
-                String tmpl = jo.getString("template");
+                if (template==null || template.isBlank()) {
+                    // No parameter? Check the header
+                    Object tmp = exchange.getIn().getHeader("template");
+                    if (tmp != null) {
+                        template = String.valueOf(tmp);
+                    }
+                }
+                if (template==null || template.isBlank()) {
+                    Map<String, Object> bodyMap = (Map<String, Object>) exchange.getIn().getBody();
+                    Map<String, Object> metaMap = (Map<String, Object>) bodyMap.get("meta");
+                    String extras = (String) metaMap.get("extras");
 
-                String template = tmpl != null ? tmpl : (String) parameters.get("template");
+                    JsonObject jo = new JsonObject(extras);
+                    String tmpl = jo.getString("template");
+
+                    template = tmpl;
+                }
+                if (template == null || template.isBlank()) {
+                    throw new IllegalArgumentException("No template passed");
+                }
 
                 X509TrustManager trustAllCerts = new X509TrustManager() {
                       @Override
