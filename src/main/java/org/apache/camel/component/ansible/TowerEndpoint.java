@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.json.JsonObject;
 import org.apache.camel.AsyncProducer;
 import org.apache.camel.CamelContext;
+import org.apache.camel.Category;
 import org.apache.camel.Consumer;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
@@ -12,6 +13,11 @@ import org.apache.camel.ExchangePattern;
 import org.apache.camel.PollingConsumer;
 import org.apache.camel.Processor;
 import org.apache.camel.Producer;
+import org.apache.camel.api.management.ManagedResource;
+import org.apache.camel.spi.Metadata;
+import org.apache.camel.spi.UriEndpoint;
+import org.apache.camel.spi.UriParam;
+import org.apache.camel.spi.UriPath;
 import org.apache.camel.support.AsyncProcessorConverterHelper;
 import org.apache.camel.support.DefaultEndpoint;
 
@@ -26,15 +32,27 @@ import java.net.http.HttpResponse;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
 
 /**
- *
+ * Component that interacts with Ansible Tower
  */
+@ManagedResource(description = "Managed Ansible Tower endpoint")
+@UriEndpoint(scheme = "tower", title = "Ansible Tower", syntax = "tower:address[?options]",
+            firstVersion = "0.0.1",
+            category = Category.MANAGEMENT)
 public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
+    @UriPath
+    @Metadata(required = true, description = "The (IP) address of the tower instance to talk to")
     private final String uri;
+    @UriParam( description = "BasicAuth")
+    private String basicAuth;
+
     private final String remaining;
     private final Map<String, Object> parameters;
     private CamelContext context;
@@ -44,6 +62,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
         this.uri = uri;
         this.remaining = remaining;
         this.parameters = parameters;
+        this.basicAuth = (String) parameters.get("basicAuth");
     }
 
     @Override
@@ -140,14 +159,12 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                 sslContext.init(null, new TrustManager[]{trustAllCerts}, new SecureRandom());
 
 
-                String userPass = (String) parameters.get("basicAuth");
-                if (userPass == null) {
-                    throw new IllegalArgumentException("Credentials ('userPass') missing.");
-                }
-                String basicAuth = "Basic " + userPass;
+
+                String basicAuth = "Basic " + getBasicAuth();
 
                 HttpClient client = HttpClient.newBuilder()
                         .sslContext(sslContext)
+                        .connectTimeout(Duration.of(1, ChronoUnit.SECONDS))
                         .build();
 
                 HttpRequest request = HttpRequest.newBuilder()
@@ -156,48 +173,53 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                         .POST(HttpRequest.BodyPublishers.ofString(""))
                         .build();
 
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = null;
 
-                if (response.statusCode() == 201 ) { // created
-                    // slurp the body and obtain the created job
-                    // We could also just read the location header and extract the id from there.
-                    String body = response.body();
-                    JsonNode json = mapper.readTree(body);
-                    JsonNode job = json.get("job");
-                    int jobId = job.asInt();
+                try {
+                    response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                } catch (Exception e) {
+                    e.printStackTrace();  // TODO: Customise this generated block
+                    exchange.setRollbackOnly(true);
+                    exchange.setException(e);
+                    Map<String,String> outcome = new HashMap<>();
+                    outcome.put("status", "Fail");
+                    outcome.put("template", template);
+                    outcome.put("message", e.getMessage());
+                    org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(outcome);
+                    exchange.getIn().setBody(jo.toJson());
+                }
 
-                    Optional<String> oJobUrl = response.headers().firstValue("Location");
-                    String jobUrl = oJobUrl.orElse("/api/v2/job/" + jobId + "/");
+                if (response != null) {
+                    if (response.statusCode() == 201) { // created
+                        // slurp the body and obtain the created job
+                        // We could also just read the location header and extract the id from there.
+                        String body = response.body();
+                        JsonNode json = mapper.readTree(body);
+                        JsonNode job = json.get("job");
+                        int jobId = job.asInt();
 
-                    JobStatus status = getJobOutcome(client, host, jobUrl, basicAuth, mapper);
+                        Optional<String> oJobUrl = response.headers().firstValue("Location");
+                        String jobUrl = oJobUrl.orElse("/api/v2/job/" + jobId + "/");
 
-                    StringBuilder sb = new StringBuilder();
-                    if (status.status == JobStatus.Status.OK) {
-                        sb.append("Success ");
-                    }
-                    else {
-                        sb.append("Fail ");
+                        JobStatus status = getJobOutcome(client, host, jobUrl, basicAuth, mapper);
+
+                        Map<String, String> outcome = new HashMap<>();
+                        if (status.status == JobStatus.Status.OK) {
+                            outcome.put("status", "Success");
+                        } else {
+                            outcome.put("status", "Fail");
                         }
-                    sb.append("Job with id ");
-                    sb.append(jobId).append(" created.").append('\n');
-                    if (status.status == JobStatus.Status.OK) {
-                        sb.append("Outcome of job: ");
+                        outcome.put("template", template);
+                        outcome.put("job", String.valueOf(jobId));
+                        org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(outcome);
+                        exchange.getIn().setBody(jo.toJson());
 
+                    } else if (response.statusCode() / 100 == 4) {
+                        // We could flag to retry
+                        exchange.setException(new IOException("Call returned code " + response.statusCode()));
+                    } else {
+                        exchange.setException(new IllegalStateException("Unknown return code " + response.statusCode()));
                     }
-                    else {
-                        sb.append("Job failed: ");
-                    }
-                    sb.append(status.message);
-                    exchange.getIn().setBody(sb.toString());
-                    exchange.getIn().setHeader("targetUrl", String.valueOf(jobId));
-
-                }
-                else if (response.statusCode() /100 == 4) {
-                    // We could flag to retry
-                    exchange.setException(new IOException("Call returned code " + response.statusCode()));
-                }
-                else {
-                    exchange.setException(new IllegalStateException("Unknown return code " + response.statusCode()));
                 }
             }
 
@@ -231,21 +253,22 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
         while (count < 10) {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-            // TODO evaluate return code
-            String body = response.body();
-            JsonNode json = mapper.readTree(body);
-            JsonNode fNode = json.get("finished");
-            if (!fNode.isNull()) {
-                JsonNode failNode = json.get("failed");
-                boolean isFail = failNode.asBoolean();
-                JsonNode statusNode = json.get("status");
-                JobStatus js = new JobStatus(!isFail, statusNode.asText());
-                return js;
+            if (response.statusCode() == 200 ) {
+
+                String body = response.body();
+                JsonNode json = mapper.readTree(body);
+                JsonNode fNode = json.get("finished");
+                if (!fNode.isNull()) {
+                    JsonNode failNode = json.get("failed");
+                    boolean isFail = failNode.asBoolean();
+                    JsonNode statusNode = json.get("status");
+                    JobStatus js = new JobStatus(!isFail, statusNode.asText());
+                    return js;
+                }
             }
 
             count++;
             Thread.sleep(150L * (19+count)); // Wait a bit, TODO make configurable, exp backoff?
-
         }
 
         return new JobStatus(false, "Did not get a reply in time");
@@ -302,5 +325,13 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
 
     public int getOption() {
         return option;
+    }
+
+    public String getBasicAuth() {
+        return basicAuth;
+    }
+
+    public void setBasicAuth(String basicAuth) {
+        this.basicAuth = basicAuth;
     }
 }

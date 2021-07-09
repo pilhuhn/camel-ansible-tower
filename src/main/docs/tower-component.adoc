@@ -1,0 +1,19 @@
+[[tower-component]]
+= Ansible Tower component
+:doctitle: Ansible Tower
+:artifactId: camel-ansbile-tower
+:description: Interact with Ansible Tower
+:supportLevel: preview
+
+*{component-header}*
+
+The Ansible Tower component interacts with Ansible Tower
+
+== URI format
+
+[source]
+----
+tower:tower-address[?options]
+----
+
+Where `tower-address` is the IP-address or hostname of the towe instance to talk to.
