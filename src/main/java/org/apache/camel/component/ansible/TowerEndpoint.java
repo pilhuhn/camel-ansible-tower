@@ -246,11 +246,13 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
     /**
      * Populate the extra_vars for Tower. this is a json object with a nested
      *  object 'extra_vars'.
+     *  The inner variables need to be a string in json, with proper escaping
+     *  E.g. <pre>"extra_vars": "{\"a\":2,\"b\":\"hello\",\"c\":\"lilalu\"}"</pre>.
      * @param bodyMap Body of the incoming payload
      * @return A string of json of the vars object.
      */
     private String fillExtraVars(Map<String, Object> bodyMap) {
-        Map<String, Map<String, String>> outer = new HashMap<>(1);
+        Map<String, String> outer = new HashMap<>(1);
         Map<String, String> extras = new HashMap<>();
         Map<String, Object> payload = (Map<String, Object>) bodyMap.get("payload");
 
@@ -261,14 +263,16 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
 
         // TODO copy events[]->payload[]
 
-        outer.put("extra_vars", extras);
-        org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(outer);
+        org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(extras);
+        outer.put("extra_vars", jo.toJson());
+        jo = new org.apache.camel.util.json.JsonObject(outer);
         return jo.toJson();
     }
 
     private void copy(Map<String, String> to, Map<String, Object> from, String what) {
         if (from == null) {
             to.put(what,"-no payload map provided-");
+            return;
         }
         String val = (String) from.getOrDefault(what, "-unset-");
         to.put(what, val);

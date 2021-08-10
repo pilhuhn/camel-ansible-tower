@@ -47,10 +47,15 @@ public class TowerComponentTest extends CamelTestSupport {
         ).respond(response(fileBody("tower_return2.json"))
                 .withStatusCode(200));
 
+
     }
 
     @After
     public void stopMockServer()  {
+        // Helper to debug mock server issues
+//        System.err.println(cas.retrieveLogMessages(request()));
+//        System.err.println(cas.retrieveRecordedRequests(request()));
+
         cas.stop();
     }
 
@@ -107,8 +112,8 @@ public class TowerComponentTest extends CamelTestSupport {
         String fName = "/" + fileName;
         try (InputStreamReader isr = new InputStreamReader(TowerComponentTest.class.getResourceAsStream(fName)) ) {
             char[] target = new char[8192];
-            isr.read(target);
-            return String.valueOf(target);
+            int numRead = isr.read(target);
+            return String.valueOf(target,0,numRead);
         }
     }
 
