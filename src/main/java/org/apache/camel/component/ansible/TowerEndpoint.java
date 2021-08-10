@@ -171,6 +171,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create("https://" + host + "/api/v2/job_templates/" + template + "/launch/"))
                         .header("Authorization", basicAuth)
+                        .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(jsonExtras))
                         .build();
 
