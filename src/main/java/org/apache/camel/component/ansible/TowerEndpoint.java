@@ -159,6 +159,8 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                 sslContext.init(null, new TrustManager[]{trustAllCerts}, new SecureRandom());
 
                 String jsonExtras = fillExtraVars(bodyMap);
+                System.out.println("Extras are " + jsonExtras);
+                System.out.flush();
 
 
                 String basicAuth = "Basic " + getBasicAuth();
@@ -172,6 +174,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                         .uri(URI.create("https://" + host + "/api/v2/job_templates/" + template + "/launch/"))
                         .header("Authorization", basicAuth)
                         .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(jsonExtras))
                         .build();
 
