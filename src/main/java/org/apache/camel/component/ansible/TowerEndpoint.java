@@ -119,6 +119,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                 String host = remaining;
 
                 String template = (String) parameters.get("template");
+                Map<String, Object> bodyMap = (Map<String, Object>) exchange.getIn().getBody();
 
                 if (template==null || template.isBlank()) {
                     // No parameter? Check the header
@@ -128,7 +129,6 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                     }
                 }
                 if (template==null || template.isBlank()) {
-                    Map<String, Object> bodyMap = (Map<String, Object>) exchange.getIn().getBody();
                     Map<String, Object> metaMap = (Map<String, Object>) bodyMap.get("meta");
                     String extras = (String) metaMap.get("extras");
 
@@ -158,6 +158,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                 SSLContext sslContext = SSLContext.getInstance("TLS");
                 sslContext.init(null, new TrustManager[]{trustAllCerts}, new SecureRandom());
 
+                String jsonExtras = fillExtraVars(bodyMap);
 
 
                 String basicAuth = "Basic " + getBasicAuth();
@@ -170,7 +171,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create("https://" + host + "/api/v2/job_templates/" + template + "/launch/"))
                         .header("Authorization", basicAuth)
-                        .POST(HttpRequest.BodyPublishers.ofString(""))
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonExtras))
                         .build();
 
                 HttpResponse<String> response = null;
@@ -239,6 +240,29 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
 
         return p;
 
+    }
+
+    private String fillExtraVars(Map<String, Object> bodyMap) {
+        Map<String, String> extras = new HashMap<>();
+        Map<String, Object> payload = (Map<String, Object>) bodyMap.get("payload");
+
+        copy(extras, payload, "bundle");
+        copy(extras, payload, "application");
+        copy(extras, payload, "event_type");
+        copy(extras, payload, "account_id");
+
+        // TODO copy events[]->payload[]
+
+        org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(extras);
+        return jo.toJson();
+    }
+
+    private void copy(Map<String, String> to, Map<String, Object> from, String what) {
+        if (from == null) {
+            to.put(what,"-no payload map provided-");
+        }
+        String val = (String) from.getOrDefault(what, "-unset-");
+        to.put(what, val);
     }
 
     private JobStatus getJobOutcome(HttpClient client, String host, String jobUrl, String userPass, ObjectMapper mapper) throws Exception {

@@ -79,6 +79,13 @@ public class TowerComponentTest extends CamelTestSupport {
         Map<String,Object> body = new HashMap<>();
         body.put("meta", metaMap);
 
+        Map<String,Object> payloadMap = new HashMap<>();
+        payloadMap.put("application","policies");
+        payloadMap.put("bundle","rhel");
+        payloadMap.put("event_type","et1");
+
+        body.put("payload",payloadMap);
+
         JsonObject o = JsonObject.mapFrom(body);
 
         BeanExpression se = new BeanExpression(new BodyBuilder(body),"get");
