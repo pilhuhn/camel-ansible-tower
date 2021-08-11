@@ -221,7 +221,7 @@ public class TowerEndpoint extends DefaultEndpoint implements Endpoint {
 
                     } else if (response.statusCode() / 100 == 4) {
                         // We could flag to retry
-                        exchange.setException(new IOException("Call returned code " + response.statusCode()));
+                        exchange.setException(new IOException("Call returned code " + response.statusCode() + " and : " + response.body()));
                     } else {
                         exchange.setException(new IllegalStateException("Unknown return code " + response.statusCode()));
                     }
