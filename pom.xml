@@ -9,7 +9,7 @@
   <version>1.0-SNAPSHOT</version>
     <modules>
       <module>component</module>
-      <module>sender</module>
+      <module>quarkus-sender</module>
     </modules>
 
     <name>Camel Tower Component</name>
