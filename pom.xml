@@ -5,19 +5,24 @@
 
   <groupId>org.apache.camel</groupId>
   <artifactId>camel-ansible-tower</artifactId>
-  <packaging>jar</packaging>
+  <packaging>pom</packaging>
   <version>1.0-SNAPSHOT</version>
+    <modules>
+      <module>component</module>
+      <module>sender</module>
+    </modules>
 
-  <name>Camel Tower Component</name>
+    <name>Camel Tower Component</name>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <camel-quarkus.version>1.8.0</camel-quarkus.version>
-    <compiler-plugin.version>3.8.1</compiler-plugin.version>
+    <camel-quarkus.version>2.7.0</camel-quarkus.version>
+    <camel-bom.version>3.14.1</camel-bom.version>
+    <compiler-plugin.version>3.10.1</compiler-plugin.version>
     <maven.compiler.parameters>true</maven.compiler.parameters>
-    <maven.compiler.source>11</maven.compiler.source>
-    <maven.compiler.target>11</maven.compiler.target>
+    <maven.compiler.release>11</maven.compiler.release>
+    <surefire-plugin.version>2.22.2</surefire-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -26,7 +31,7 @@
       <dependency>
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-bom</artifactId>
-        <version>3.10.0</version>
+        <version>${camel-bom.version}</version>
         <scope>import</scope>
         <type>pom</type>
       </dependency>
@@ -86,10 +91,9 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.8.1</version>
+        <version>${compiler-plugin.version}</version>
         <configuration>
-          <source>${maven.compiler.source}</source>
-          <target>${maven.compiler.target}</target>
+          <release>${maven.compiler.release}</release>
         </configuration>
       </plugin>
 
@@ -106,7 +110,7 @@
       <plugin>
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-component-maven-plugin</artifactId>
-        <version>3.10.0</version>
+        <version>${camel-bom.version}</version>
         <executions>
           <execution>
             <id>generate</id>
@@ -141,6 +145,13 @@
           </execution>
         </executions>
       </plugin>
+
+      <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire-plugin.version}</version>
+      </plugin>
+
 
     </plugins>
   </build>
