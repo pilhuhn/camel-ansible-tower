@@ -101,7 +101,8 @@ public class TowerComponentTest extends CamelTestSupport {
         String jsonBody = (String) mock.getReceivedExchanges().get(0).getIn().getBody();
         System.out.println("Received body: " + jsonBody);
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode json = mapper.readTree(jsonBody);
+        JsonNode ceJson = mapper.readTree(jsonBody);
+        JsonNode json = ceJson.get("data");
         assertEquals("7", json.get("template").asText());
         assertEquals("20", json.get("job").asText());
         assertFalse(json.get("success").asBoolean());

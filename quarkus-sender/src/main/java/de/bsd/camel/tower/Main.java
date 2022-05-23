@@ -10,9 +10,10 @@ import org.apache.camel.builder.RouteBuilder;
 /**
  *
  */
+@SuppressWarnings("unused")
 public class Main extends RouteBuilder {
     @Override
-    public void configure() throws Exception {
+    public void configure() {
         from("kafka:{{component.topic}}")
                 .log("Received ${body}")
                 .toD("tower:{{tower.host}}?template={{tower.template}}&basicAuth={{tower.basicAuth}}")

@@ -23,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  *
@@ -130,7 +131,8 @@ public class TowerProducer implements Producer {
             outcome.put("status", "Fail");
             outcome.put("message", e.getMessage());
             outcome.put("template", template);
-            JsonObject jo = new JsonObject(outcome);
+            Map<String, Object> cloudEvent = wrapAsCe(outcome);
+            JsonObject jo = new JsonObject(cloudEvent);
             exchange.getIn().setBody(jo.toJson());
         }
 
@@ -150,7 +152,8 @@ public class TowerProducer implements Producer {
                 Map<String, Object> outcome = new HashMap<>(status.asMap());
                 outcome.put("template", template);
                 outcome.put("job", String.valueOf(jobId));
-                JsonObject jo = new JsonObject(outcome);
+                Map<String, Object> cloudEvent = wrapAsCe(outcome);
+                JsonObject jo = new JsonObject(cloudEvent);
                 exchange.getIn().setBody(jo.toJson());
 
             } else if (response.statusCode() / 100 == 4) {
@@ -162,7 +165,17 @@ public class TowerProducer implements Producer {
         }
     }
 
-     static String createPayload(JsonObject ceData) {
+    private Map<String, Object> wrapAsCe(Map<String, Object> outcome) {
+        Map<String, Object> ce = new HashMap<>();
+        ce.put("id", UUID.randomUUID().toString());
+        ce.put("specversion", "1.0");
+        ce.put("type", "myType");  // TODO make configurable
+        ce.put("data", outcome);
+
+        return ce;
+    }
+
+    static String createPayload(JsonObject ceData) {
         JsonObject payloadData = new JsonObject();
         payloadData.put("extra_vars", (ceData.toJson()));
         String templatePayload = payloadData.toJson();

@@ -1,0 +1,12 @@
+{
+  "id" : "9b3b4429-1393-4120-95da-54c17a512367",
+  "source" : "my.source",
+  "specversion": "1.0",
+  "type": "my.type",
+  "dataschema" : "https://acme.org/schema",
+  "data": {
+    "a": 2,
+    "b": 4,
+    "c": "Hello World"
+  }
+}
