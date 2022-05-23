@@ -60,16 +60,18 @@ public class TowerProducer implements Producer {
 
         Object body1 =  exchange.getIn().getBody();
 
-        String theBody;
+        JsonObject bodyAsCloudEvent;
 
         if (body1 instanceof String) {
-            theBody = (String) body1;
+            String tmp = (String) body1;
+            bodyAsCloudEvent = Jsoner.deserialize(tmp, new JsonObject());
         }
         else if (body1 instanceof Message) {
-            theBody = (String) ((Message)body1).getBody();
+            String tmp  = (String) ((Message)body1).getBody();
+            bodyAsCloudEvent = Jsoner.deserialize(tmp, new JsonObject());
         }
         else if (body1 instanceof JsonObject) {
-            theBody = ((JsonObject)body1).toJson();
+            bodyAsCloudEvent = (JsonObject) body1;
         }
         else {
             throw new IllegalStateException("No suitable body given " + body1);
@@ -89,9 +91,11 @@ public class TowerProducer implements Producer {
         };
 
 
+        // TODO make configurable
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(null, new TrustManager[]{trustAllCerts}, new SecureRandom());
 
+        JsonObject ceData = (JsonObject) bodyAsCloudEvent.get("data");
 
         String basicAuthHeader = "Basic " + basicAuth;
 
@@ -100,12 +104,17 @@ public class TowerProducer implements Producer {
                 .connectTimeout(Duration.of(1, ChronoUnit.SECONDS))
                 .build();
 
+        String templatePayload = createPayload(ceData);
+
+        System.out.println("Payload is now " + templatePayload);
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + host + "/api/v2/job_templates/" + template + "/launch/"))
                 .header("Authorization", basicAuthHeader)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(theBody))
+                .timeout(Duration.ofSeconds(60))
+                .POST(HttpRequest.BodyPublishers.ofString(templatePayload))
                 .build();
 
         HttpResponse<String> response = null;
@@ -116,10 +125,12 @@ public class TowerProducer implements Producer {
             e.printStackTrace();  // TODO: Customise this generated block
             exchange.setRollbackOnly(true);
             exchange.setException(e);
-            Map<String,String> outcome = new HashMap<>();
+            Map<String,Object> outcome = new HashMap<>();
+            outcome.put("success", false);
             outcome.put("status", "Fail");
             outcome.put("message", e.getMessage());
-            org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(outcome);
+            outcome.put("template", template);
+            JsonObject jo = new JsonObject(outcome);
             exchange.getIn().setBody(jo.toJson());
         }
 
@@ -129,22 +140,17 @@ public class TowerProducer implements Producer {
                 // We could also just read the location header and extract the id from there.
                 String body = response.body();
                 JsonObject json = Jsoner.deserialize(body, new JsonObject());
-                int jobId = json.getInteger("job"); // Probably json.getInteger()
+                int jobId = json.getInteger("job");
 
                 Optional<String> oJobUrl = response.headers().firstValue("Location");
-                String jobUrl = oJobUrl.orElse("/api/v2/job/" + jobId + "/");
+                String jobUrl = oJobUrl.orElse("/api/v2/jobs/" + jobId + "/");
 
-                JobStatus status = getJobOutcome(client, host, jobUrl, basicAuth);
+                JobStatus status = getJobOutcome(client, host, jobUrl, basicAuthHeader);
 
-                Map<String, String> outcome = new HashMap<>();
-                if (status.status == JobStatus.Status.OK) {
-                    outcome.put("status", "Success");
-                } else {
-                    outcome.put("status", "Fail");
-                }
+                Map<String, Object> outcome = new HashMap<>(status.asMap());
                 outcome.put("template", template);
                 outcome.put("job", String.valueOf(jobId));
-                org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(outcome);
+                JsonObject jo = new JsonObject(outcome);
                 exchange.getIn().setBody(jo.toJson());
 
             } else if (response.statusCode() / 100 == 4) {
@@ -154,6 +160,13 @@ public class TowerProducer implements Producer {
                 exchange.setException(new IllegalStateException("Unknown return code " + response.statusCode()));
             }
         }
+    }
+
+     static String createPayload(JsonObject ceData) {
+        JsonObject payloadData = new JsonObject();
+        payloadData.put("extra_vars", (ceData.toJson()));
+        String templatePayload = payloadData.toJson();
+        return templatePayload;
     }
 
     @Override
@@ -169,51 +182,17 @@ public class TowerProducer implements Producer {
     }
 
 
-    /**
-     * Populate the extra_vars for Tower. this is a json object with a nested
-     *  object 'extra_vars'.
-     *  The inner variables need to be a string in json, with proper escaping
-     *  E.g. <pre>"extra_vars": "{\"a\":2,\"b\":\"hello\",\"c\":\"lilalu\"}"</pre>.
-     * @param bodyMap Body of the incoming payload
-     * @return A string of json of the vars object.
-     */
-    private String fillExtraVars(Map<String, Object> bodyMap) {
-        Map<String, String> outer = new HashMap<>(1);
-        Map<String, String> extras = new HashMap<>();
-        Map<String, Object> payload = (Map<String, Object>) bodyMap.get("payload");
 
-        copy(extras, payload, "bundle");
-        copy(extras, payload, "application");
-        copy(extras, payload, "event_type");
-        copy(extras, payload, "account_id");
-
-        // TODO copy events[]->payload[]
-
-        org.apache.camel.util.json.JsonObject jo = new org.apache.camel.util.json.JsonObject(extras);
-        outer.put("extra_vars", jo.toJson());
-        jo = new org.apache.camel.util.json.JsonObject(outer);
-        return jo.toJson();
-    }
-
-    private void copy(Map<String, String> to, Map<String, Object> from, String what) {
-        if (from == null) {
-            to.put(what,"-no payload map provided-");
-            return;
-        }
-        String val = (String) from.getOrDefault(what, "-unset-");
-        to.put(what, val);
-    }
-
-    private JobStatus getJobOutcome(HttpClient client, String host, String jobUrl, String userPass) throws Exception {
+    private JobStatus getJobOutcome(HttpClient client, String host, String jobUrl, String basicAuthHeader) throws Exception {
 
         int count = 0;
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://" + host + jobUrl))
-                .header("Authorization", userPass)
+                .header("Authorization", basicAuthHeader)
                 .GET()
                 .build();
 
-        while (count < 10) {
+        while (true) { // We wait until we get a result
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200 ) {
@@ -221,19 +200,20 @@ public class TowerProducer implements Producer {
                 String body = response.body();
                 JsonObject json = Jsoner.deserialize(body, new JsonObject());
                 String fNode =  json.getString("finished");
-                if (!fNode.isEmpty()) {
+                String statusNode = json.getString("status");
+                System.out.printf("==> current job status for job %s is >%s<%n" , jobUrl, statusNode);
+                if (fNode!=null && !fNode.isEmpty()) {
                     boolean isFail = json.getBoolean("failed");
-                    String statusNode = json.getString("status");
-                    JobStatus js = new JobStatus(!isFail, statusNode);
+
+                    String explanation = json.getString("job_explanation");
+                    JobStatus js = new JobStatus(!isFail, statusNode, explanation);
                     return js;
                 }
             }
 
             count++;
-            Thread.sleep(150L * (19+count)); // Wait a bit, TODO make configurable, exp backoff?
+            Thread.sleep(150L * (23+count)); // Wait a bit, TODO make configurable, exp backoff?
         }
-
-        return new JobStatus(false, "Did not get a reply in time");
     }
 
 }

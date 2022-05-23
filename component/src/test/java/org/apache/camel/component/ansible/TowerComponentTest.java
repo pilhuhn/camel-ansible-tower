@@ -7,11 +7,12 @@ import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.apache.camel.test.AvailablePortFinder;
-import org.apache.camel.test.junit4.CamelTestSupport;
+import org.apache.camel.test.junit5.CamelTestSupport;
 import org.apache.camel.util.json.JsonObject;
-import org.junit.After;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.mockserver.integration.ClientAndServer;
 
 import java.io.IOException;
@@ -21,6 +22,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
 
@@ -29,9 +32,11 @@ public class TowerComponentTest extends CamelTestSupport {
     private static int serverPort;
     private static ClientAndServer cas;;
 
-    @BeforeClass
+    @BeforeAll
     public static void startMockServer() throws IOException {
         serverPort = AvailablePortFinder.getNextAvailable();
+
+        System.out.println("Mockserver, using port " + serverPort);
 
         cas = ClientAndServer.startClientAndServer(serverPort);
 
@@ -41,17 +46,25 @@ public class TowerComponentTest extends CamelTestSupport {
                         .withMethod("POST")
         ).respond(response(fileBody("tower_return1.json"))
                 .withStatusCode(201)
-                .withHeader("Location","/api/v2/job/20/")
+                .withHeader("Location","/api/v2/jobs/20/")
         );
+
         cas.when(request()
                 .withMethod("GET")
+                .withPath("/api/v2/jobs/190/")
+        ). respond(response(fileBody("tower_return_good.json"))
+                .withStatusCode(200));
+
+        cas.when(request()
+                .withMethod("GET")
+                .withPath("/api/v2/jobs/20/")
         ).respond(response(fileBody("tower_return2.json"))
                 .withStatusCode(200));
 
 
     }
 
-    @After
+    @AfterEach
     public void stopMockServer()  {
         // Helper to debug mock server issues
 //        System.err.println(cas.retrieveLogMessages(request()));
@@ -64,7 +77,7 @@ public class TowerComponentTest extends CamelTestSupport {
     protected ProducerTemplate template;
 
     @Test
-    public void testTower() throws Exception {
+    void testTower() throws Exception {
         MockEndpoint mock = getMockEndpoint("mock:result");
         mock.expectedMinimumMessageCount(1);
 
@@ -86,10 +99,12 @@ public class TowerComponentTest extends CamelTestSupport {
         // See if we got something back
         mock.assertIsSatisfied();
         String jsonBody = (String) mock.getReceivedExchanges().get(0).getIn().getBody();
+        System.out.println("Received body: " + jsonBody);
         ObjectMapper mapper = new ObjectMapper();
         JsonNode json = mapper.readTree(jsonBody);
         assertEquals("7", json.get("template").asText());
         assertEquals("20", json.get("job").asText());
+        assertFalse(json.get("success").asBoolean());
     }
 
     @Override

@@ -1,4 +1,7 @@
-// camel-K: mvn:com.github.pilhuhn:camel-ansible-tower:16b26edbd5
+// camel-k: language=java
+//    Using the github: dependency in the next line builds the dep on the fly with jitpack.io
+// camel-k: dependency=github:pilhuhn:camel-ansible-tower:648193e
+// camel-k: property=component.topic=mytopic
 
 package de.bsd.camel.tower;
 
